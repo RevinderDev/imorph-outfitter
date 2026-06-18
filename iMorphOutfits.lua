@@ -66,6 +66,7 @@ local resetBtn
 local editDialog
 local nameInput, textInput, noteInput
 local saveBtn, deleteBtn
+local ioDialog, ioEditBox
 
 local function UnfocusAllInputBoxes()
 	if searchBox then
@@ -79,6 +80,9 @@ local function UnfocusAllInputBoxes()
 	end
 	if noteInput then
 		noteInput:ClearFocus()
+	end
+	if ioEditBox then
+		ioEditBox:ClearFocus()
 	end
 end
 
@@ -258,7 +262,8 @@ function SetGridLayout(cols)
 	scrollContent:SetWidth(contentWidth)
 
 	-- Seamlessly match outer window frame margins to custom encapsulated list widths
-	local topControlsMinWidth = searchContainer:GetWidth() + 5 + layoutBtn:GetWidth() + 30
+	-- Implemented minimum 275px floor bounding metric to natively prevent layout overlap on small sizes
+	local topControlsMinWidth = math.max(searchContainer:GetWidth() + 5 + layoutBtn:GetWidth() + 30, 275)
 	local finalFrameWidth = math.max(topControlsMinWidth, insetWidth + 30)
 	frame:SetWidth(finalFrameWidth)
 
@@ -396,13 +401,193 @@ dialogApplyBtn:SetSize(90, 24)
 dialogApplyBtn:SetPoint("LEFT", deleteBtn, "RIGHT", 5, 0)
 dialogApplyBtn:SetText("Apply")
 
--- Bottom Placement Setup for New Outfit Configuration Button
+-- Bottom Placement Setup for Wardrobe Grid Configurations
 local newOutfitBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-newOutfitBtn:SetSize(100, 22)
+newOutfitBtn:SetSize(85, 22)
 newOutfitBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 15, 14)
 newOutfitBtn:SetText("New Outfit")
 
-statusText:SetPoint("BOTTOMLEFT", newOutfitBtn, "BOTTOMRIGHT", 10, 4)
+local exportBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+exportBtn:SetSize(60, 22)
+exportBtn:SetPoint("LEFT", newOutfitBtn, "RIGHT", 5, 0)
+exportBtn:SetText("Export")
+
+local importBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+importBtn:SetSize(60, 22)
+importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 5, 0)
+importBtn:SetText("Import")
+
+statusText:SetPoint("BOTTOMLEFT", importBtn, "BOTTOMRIGHT", 10, 4)
+
+-------------------------------------------------------------------------------
+-- IMPORT / EXPORT STRING SERIALIZATION ENGINE
+-------------------------------------------------------------------------------
+local function EncodeOutfits()
+	local pieces = {}
+	for _, outfit in ipairs(iMorphOutfitsDB) do
+		local name = outfit.name or ""
+		local body = outfit.body or ""
+		local note = outfit.note or ""
+		local isFav = outfit.isFavorite and "1" or "0"
+
+		local function hexEncode(str)
+			return (string.gsub(str, ".", function(c)
+				return string.format("%02X", string.byte(c))
+			end))
+		end
+		table.insert(pieces, string.format("%s:%s:%s:%s", hexEncode(name), hexEncode(body), hexEncode(note), isFav))
+	end
+	return table.concat(pieces, ";")
+end
+
+local function DecodeOutfits(str)
+	local function hexDecode(hex)
+		return (string.gsub(hex, "(%x%x)", function(h)
+			return string.char(tonumber(h, 16))
+		end))
+	end
+
+	local count = 0
+	for outfitStr in string.gmatch(str, "[^;]+") do
+		local nameHex, bodyHex, noteHex, isFav = string.match(outfitStr, "^([^:]*):([^:]*):([^:]*):(%d)$")
+		if nameHex and bodyHex then
+			local name = hexDecode(nameHex)
+			local body = hexDecode(bodyHex)
+			local note = hexDecode(noteHex)
+			if name ~= "" and body ~= "" then
+				table.insert(iMorphOutfitsDB, {
+					name = name,
+					body = body,
+					note = note ~= "" and note or nil,
+					isFavorite = (isFav == "1"),
+				})
+				count = count + 1
+			end
+		end
+	end
+	return count
+end
+
+ioDialog = CreateFrame("Frame", "IMO_IODialog", UIParent, "BackdropTemplate")
+ioDialog:SetSize(330, 260)
+ioDialog:SetPoint("CENTER")
+ioDialog:SetMovable(true)
+ioDialog:EnableMouse(true)
+ioDialog:RegisterForDrag("LeftButton")
+ioDialog:SetScript("OnDragStart", ioDialog.StartMoving)
+ioDialog:SetScript("OnDragStop", ioDialog.StopMovingOrSizing)
+ioDialog:SetFrameStrata("DIALOG")
+ioDialog:Hide()
+
+ioDialog:SetBackdrop({
+	bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+	edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+	tile = true,
+	tileSize = 16,
+	edgeSize = 16,
+	insets = { left = 4, right = 4, top = 4, bottom = 4 },
+})
+ioDialog:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
+
+local ioTitle = ioDialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+ioTitle:SetPoint("TOPLEFT", 15, -15)
+
+local ioClose = CreateFrame("Button", nil, ioDialog, "UIPanelCloseButton")
+ioClose:SetPoint("TOPRIGHT", -5, -5)
+ioClose:SetScript("OnClick", function()
+	ioDialog:Hide()
+	UnfocusAllInputBoxes()
+end)
+
+local ioContainer = CreateFrame("Frame", nil, ioDialog, "BackdropTemplate")
+ioContainer:SetPoint("TOPLEFT", 15, -45)
+ioContainer:SetSize(300, 160)
+ioContainer:SetBackdrop({
+	bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+	tile = true,
+	tileSize = 16,
+	edgeSize = 12,
+	insets = { left = 3, right = 3, top = 3, bottom = 3 },
+})
+ioContainer:SetBackdropColor(0.15, 0.15, 0.15, 1)
+
+local ioScroll = CreateFrame("ScrollFrame", nil, ioContainer, "UIPanelScrollFrameTemplate")
+ioScroll:SetPoint("TOPLEFT", 6, -6)
+ioScroll:SetPoint("BOTTOMRIGHT", -26, 6)
+
+ioEditBox = CreateFrame("EditBox", nil, ioScroll)
+ioEditBox:SetSize(268, 148)
+ioEditBox:SetMultiLine(true)
+ioEditBox:SetAutoFocus(false)
+ioEditBox:SetFontObject("GameFontHighlightSmall")
+ioEditBox:SetTextInsets(2, 2, 2, 2)
+ioScroll:SetScrollChild(ioEditBox)
+
+ioEditBox:SetScript("OnTextChanged", function()
+	ioScroll:UpdateScrollChildRect()
+end)
+ioEditBox:SetScript("OnEscapePressed", function(self)
+	self:ClearFocus()
+end)
+
+local ioActionBtn = CreateFrame("Button", nil, ioDialog, "UIPanelButtonTemplate")
+ioActionBtn:SetSize(100, 24)
+ioActionBtn:SetPoint("BOTTOMLEFT", ioDialog, "BOTTOMLEFT", 15, 15)
+
+local ioCancelBtn = CreateFrame("Button", nil, ioDialog, "UIPanelButtonTemplate")
+ioCancelBtn:SetSize(100, 24)
+ioCancelBtn:SetPoint("BOTTOMRIGHT", ioDialog, "BOTTOMRIGHT", -15, 15)
+ioCancelBtn:SetText("Close")
+ioCancelBtn:SetScript("OnClick", function()
+	ioDialog:Hide()
+	UnfocusAllInputBoxes()
+end)
+
+exportBtn:SetScript("OnClick", function()
+	editDialog:Hide()
+	local encoded = EncodeOutfits()
+	ioTitle:SetText("Export Outfits (Ctrl+C)")
+	ioEditBox:SetText(encoded)
+	ioActionBtn:SetText("Highlight")
+	ioActionBtn:SetScript("OnClick", function()
+		ioEditBox:HighlightText()
+		ioEditBox:SetFocus()
+		SetStatus("Text highlighted! Copy with Ctrl+C.", false)
+	end)
+	ioDialog:Show()
+	C_Timer.After(0.1, function()
+		ioEditBox:HighlightText()
+		ioEditBox:SetFocus()
+	end)
+end)
+
+importBtn:SetScript("OnClick", function()
+	editDialog:Hide()
+	ioTitle:SetText("Import Outfits (Ctrl+V)")
+	ioEditBox:SetText("")
+	ioActionBtn:SetText("Import")
+	ioActionBtn:SetScript("OnClick", function()
+		local text = ioEditBox:GetText()
+		if text and text ~= "" then
+			local importedCount = DecodeOutfits(text)
+			if importedCount > 0 then
+				SetStatus(string.format("Imported %d outfits!", importedCount), false)
+				ioDialog:Hide()
+				UnfocusAllInputBoxes()
+				if RefreshMacroList then
+					RefreshMacroList()
+				end
+			else
+				SetStatus("Error: Invalid import text string.", true)
+			end
+		else
+			SetStatus("Error: Paste data layout first.", true)
+		end
+	end)
+	ioDialog:Show()
+	ioEditBox:SetFocus()
+end)
 
 local function OpenEditor(index)
 	selectedIndex = index
@@ -631,6 +816,9 @@ local function ToggleMainFrame()
 	if frame:IsShown() then
 		frame:Hide()
 		CloseEditor()
+		if ioDialog then
+			ioDialog:Hide()
+		end
 	else
 		frame:Show()
 		SetGridLayout(iMorphOutfitsDB.columnLayout or 1)
@@ -810,4 +998,3 @@ SlashCmdList["IMORPHOUTFITS"] = function(msg)
 		ToggleMainFrame()
 	end
 end
-
