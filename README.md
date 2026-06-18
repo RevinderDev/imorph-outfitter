@@ -10,14 +10,6 @@
 
 An elegant, grid-based wardrobe launcher and manager designed for tracking and executing iMorph profiles efficiently.
 
----
-
-## Features
-
-* **Adaptive Grid Layouts:** Toggle seamlessly between layout scales: `1xN (Small)`, `2xN (Medium)`, `3xN (Large)`, or `4xN (Extra Alex)`.
-* **Instant Filtering:** Real-time search instantly narrows down your outfit choices with every typed character.
-* **Smart Favorites:** Pin frequently used morphs to generate a persistent index shortcut path for chat commands.
-* **Decoupled Editor Modals:** Keeps launcher visuals clean by offloading editing fields into a right-click pop-up dialog.
 
 ---
 
