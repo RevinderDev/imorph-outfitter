@@ -262,8 +262,8 @@ function SetGridLayout(cols)
 	scrollContent:SetWidth(contentWidth)
 
 	-- Seamlessly match outer window frame margins to custom encapsulated list widths
-	-- Implemented minimum 275px floor bounding metric to natively prevent layout overlap on small sizes
-	local topControlsMinWidth = math.max(searchContainer:GetWidth() + 5 + layoutBtn:GetWidth() + 30, 275)
+	-- Set to minimum 315px floor metric to natively block button overlap patterns on low column sizes
+	local topControlsMinWidth = math.max(searchContainer:GetWidth() + 5 + layoutBtn:GetWidth() + 30, 315)
 	local finalFrameWidth = math.max(topControlsMinWidth, insetWidth + 30)
 	frame:SetWidth(finalFrameWidth)
 
@@ -403,24 +403,65 @@ dialogApplyBtn:SetText("Apply")
 
 -- Bottom Placement Setup for Wardrobe Grid Configurations
 local newOutfitBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-newOutfitBtn:SetSize(85, 22)
+newOutfitBtn:SetSize(80, 22)
 newOutfitBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 15, 14)
 newOutfitBtn:SetText("New Outfit")
 
 local exportBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-exportBtn:SetSize(60, 22)
-exportBtn:SetPoint("LEFT", newOutfitBtn, "RIGHT", 5, 0)
+exportBtn:SetSize(52, 22)
+exportBtn:SetPoint("LEFT", newOutfitBtn, "RIGHT", 4, 0)
 exportBtn:SetText("Export")
 
 local importBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-importBtn:SetSize(60, 22)
-importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 5, 0)
+importBtn:SetSize(52, 22)
+importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 4, 0)
 importBtn:SetText("Import")
 
-statusText:SetPoint("BOTTOMLEFT", importBtn, "BOTTOMRIGHT", 10, 4)
+local deleteAllBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+deleteAllBtn:SetSize(72, 22)
+deleteAllBtn:SetPoint("LEFT", importBtn, "RIGHT", 4, 0)
+deleteAllBtn:SetText("Delete All")
+
+statusText:SetPoint("BOTTOMLEFT", deleteAllBtn, "BOTTOMRIGHT", 10, 4)
 
 -------------------------------------------------------------------------------
--- IMPORT / EXPORT STRING SERIALIZATION ENGINE
+-- DELETE ALL FUNCTIONALITY CONFIGURATION (SELF-CONFIRMING STATE TIMER)
+-------------------------------------------------------------------------------
+local isDeleteAllConfirming = false
+local deleteAllTimer
+deleteAllBtn:SetScript("OnClick", function(self)
+	if not isDeleteAllConfirming then
+		isDeleteAllConfirming = true
+		self:SetText("Confirm?")
+		SetStatus("Click again to clear ALL outfits!", true)
+		deleteAllTimer = C_Timer.NewTimer(4.0, function()
+			isDeleteAllConfirming = false
+			self:SetText("Delete All")
+		end)
+	else
+		if deleteAllTimer then
+			deleteAllTimer:Cancel()
+		end
+		isDeleteAllConfirming = false
+		self:SetText("Delete All")
+
+		-- Wipe layout entries cleanly but retain dynamic settings variables
+		local currentLayout = iMorphOutfitsDB.columnLayout
+		local currentPos = iMorphOutfitsDB.minimapPos
+		iMorphOutfitsDB = { columnLayout = currentLayout, minimapPos = currentPos }
+
+		SetStatus("All wardrobe entries purged.", true)
+		if editDialog then
+			editDialog:Hide()
+		end
+		if RefreshMacroList then
+			RefreshMacroList()
+		end
+	end
+end)
+
+-------------------------------------------------------------------------------
+-- IMPORT / EXPORT STRING SERIALIZATION ENGINE (WITH AUTO-CONFLICT INCREMENTER)
 -------------------------------------------------------------------------------
 local function EncodeOutfits()
 	local pieces = {}
@@ -447,6 +488,15 @@ local function DecodeOutfits(str)
 		end))
 	end
 
+	local function NameExists(name)
+		for _, outfit in ipairs(iMorphOutfitsDB) do
+			if outfit.name == name then
+				return true
+			end
+		end
+		return false
+	end
+
 	local count = 0
 	for outfitStr in string.gmatch(str, "[^;]+") do
 		local nameHex, bodyHex, noteHex, isFav = string.match(outfitStr, "^([^:]*):([^:]*):([^:]*):(%d)$")
@@ -455,6 +505,16 @@ local function DecodeOutfits(str)
 			local body = hexDecode(bodyHex)
 			local note = hexDecode(noteHex)
 			if name ~= "" and body ~= "" then
+				-- Smart Conflict Architecture: Append sequential bracket suffix if name is already present
+				if NameExists(name) then
+					local suffixNum = 1
+					local baseName = name
+					while NameExists(baseName .. "[imported-" .. suffixNum .. "]") do
+						suffixNum = suffixNum + 1
+					end
+					name = baseName .. "[imported-" .. suffixNum .. "]"
+				end
+
 				table.insert(iMorphOutfitsDB, {
 					name = name,
 					body = body,
@@ -771,8 +831,19 @@ function RefreshMacroList()
 
 		btn:SetScript("OnClick", function(self, button)
 			if button == "LeftButton" then
-				ApplyOutfit(data)
-				SetStatus("Applied: " .. data.name, false)
+				if IsControlKeyDown() then
+					-- Ctrl + Left Click Route: Clear outfit instantly without any confirmation modal
+					table.remove(iMorphOutfitsDB, i)
+					SetStatus("Deleted: " .. data.name, true)
+					if editDialog and selectedIndex == i then
+						editDialog:Hide()
+						selectedIndex = nil
+					end
+					RefreshMacroList()
+				else
+					ApplyOutfit(data)
+					SetStatus("Applied: " .. data.name, false)
+				end
 			elseif button == "RightButton" then
 				OpenEditor(i)
 			end
@@ -787,7 +858,7 @@ function RefreshMacroList()
 				GameTooltip:AddLine("\n|cff888888No descriptions added.|r")
 			end
 			GameTooltip:AddLine(
-				"\n|cffffaa00[Left-Click]|r Apply Outfit\n|cffffaa00[Right-Click]|r Open Editor Dialog",
+				"\n|cffffaa00[Left-Click]|r Apply Outfit\n|cffffaa00[Ctrl+Left-Click]|r Instantly Delete\n|cffffaa00[Right-Click]|r Open Editor Dialog",
 				0.7,
 				0.7,
 				0.7
