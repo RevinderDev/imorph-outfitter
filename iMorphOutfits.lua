@@ -4,7 +4,7 @@ local addonName = "iMorphOutfits"
 iMorphOutfitsDB = iMorphOutfitsDB or {}
 
 local frame = CreateFrame("Frame", "IMO_MainFrame", UIParent, "BackdropTemplate")
-frame:SetSize(530, 450)
+frame:SetHeight(450)
 frame:SetPoint("CENTER")
 frame:SetMovable(true)
 frame:EnableMouse(true)
@@ -25,7 +25,6 @@ frame:SetBackdropColor(0, 0, 0, 0.9)
 -- Title Heading (iMorph Outfits)
 local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("TOPLEFT", 15, -15)
-title:SetText("iMorph Outfits")
 
 -- Author Credit Subtitle
 local authorText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -33,9 +32,8 @@ authorText:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -2)
 authorText:SetTextColor(1, 1, 1, 1) -- Pure White
 authorText:SetText("by Revinder")
 
--- Status Message Display String (Bottom Center Alignment)
+-- Status Message Display String (Bottom Alignment)
 local statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-statusText:SetPoint("BOTTOM", frame, "BOTTOM", 0, 12)
 statusText:SetText("")
 
 local statusTimer
@@ -55,44 +53,23 @@ end
 local closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 closeBtn:SetPoint("TOPRIGHT", -5, -5)
 
--- Forward declaration for the search box
-local searchBox
+-- Forward declarations for dynamic input contexts
+local searchContainer, searchBox
+local layoutBtn, layoutMenu
+local resetBtn
+local editDialog
+local nameInput, textInput, noteInput
+local saveBtn, deleteBtn
 
--- Releases keyboard traps entirely so WASD functions right away
 local function UnfocusAllInputBoxes()
+    if searchBox then searchBox:ClearFocus() end
     if nameInput then nameInput:ClearFocus() end
     if textInput then textInput:ClearFocus() end
     if noteInput then noteInput:ClearFocus() end
-    if searchBox then searchBox:ClearFocus() end
-end
-
--- Shared Core Outfit Executor Engine
-local function ApplyOutfit(data)
-    if not data or not data.body or data.body == "" then return end
-    local editBox = ChatFrame1EditBox
-    if editBox then
-        local backupChatType = editBox:GetAttribute("chatType")
-        
-        for line in string.gmatch(data.body, "[^\r\n]+") do
-            if line and line ~= "" then
-                line = string.gsub(line, "^%s*(.-)%s*$", "%1")
-                
-                local backupText = editBox:GetText()
-                editBox:SetAttribute("chatType", "SAY")
-                editBox:SetText(line)
-                ChatEdit_SendText(editBox, 0)
-                editBox:SetText(backupText)
-            end
-        end
-        
-        editBox:SetAttribute("chatType", backupChatType)
-    end
 end
 
 -- Top Right "Reset Outfit" Button Configuration
-local resetBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-resetBtn:SetSize(100, 22)
-resetBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -38, -14)
+resetBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 resetBtn:SetText("Reset Outfit")
 resetBtn:SetScript("OnClick", function()
     local editBox = ChatFrame1EditBox
@@ -113,11 +90,31 @@ resetBtn:SetScript("OnClick", function()
     UnfocusAllInputBoxes()
 end)
 
+-- Shared Core Outfit Executor Engine
+local function ApplyOutfit(data)
+    if not data or not data.body or data.body == "" then return end
+    local editBox = ChatFrame1EditBox
+    if editBox then
+        local backupChatType = editBox:GetAttribute("chatType")
+        for line in string.gmatch(data.body, "[^\r\n]+") do
+            if line and line ~= "" then
+                line = string.gsub(line, "^%s*(.-)%s*$", "%1")
+                local backupText = editBox:GetText()
+                editBox:SetAttribute("chatType", "SAY")
+                editBox:SetText(line)
+                ChatEdit_SendText(editBox, 0)
+                editBox:SetText(backupText)
+            end
+        end
+        editBox:SetAttribute("chatType", backupChatType)
+    end
+end
+
 -------------------------------------------------------------------------------
--- DYNAMIC SEARCH BAR (Width: 200)
+-- DYNAMIC SEARCH BAR
 -------------------------------------------------------------------------------
-local searchContainer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-searchContainer:SetSize(200, 24)
+searchContainer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+searchContainer:SetHeight(24)
 searchContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", 15, -52)
 searchContainer:SetBackdrop({
     bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
@@ -136,24 +133,20 @@ searchBox:SetMultiLine(false)
 
 local searchPlaceholder = searchBox:CreateFontString(nil, "OVERLAY", "GameFontDisable")
 searchPlaceholder:SetPoint("LEFT", searchBox, "LEFT", 8, 0)
-searchPlaceholder:SetText("Search outfits...")
+searchPlaceholder:SetText("Search...")
 
 searchBox:SetScript("OnTextChanged", function(self)
-    if self:GetText() == "" then
-        searchPlaceholder:Show()
-    else
-        searchPlaceholder:Hide()
-    end
+    if self:GetText() == "" then searchPlaceholder:Show() else searchPlaceholder:Hide() end
     if RefreshMacroList then RefreshMacroList() end
 end)
 searchBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
 -------------------------------------------------------------------------------
--- LEFT COLUMN: OUTFIT LIST PANEL
+-- OUTFIT LIST GRID PANEL (Right anchor removed to let SetWidth dictate size)
 -------------------------------------------------------------------------------
 local listInset = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-listInset:SetSize(200, 332)
 listInset:SetPoint("TOPLEFT", 15, -82)
+listInset:SetPoint("BOTTOM", frame, "BOTTOM", 0, 44)
 listInset:SetBackdrop({
     bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -166,29 +159,139 @@ local scrollFrame = CreateFrame("ScrollFrame", "IMO_ScrollFrame", listInset, "UI
 scrollFrame:SetPoint("TOPLEFT", 5, -5)
 scrollFrame:SetPoint("BOTTOMRIGHT", -25, 5)
 
-scrollFrame:EnableMouseWheel(true)
-scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-    local current = self:GetVerticalScroll()
-    local new = current - (delta * 25)
-    if new < 0 then new = 0 end
-    local maxScroll = self:GetVerticalScrollRange()
-    if new > maxScroll then new = maxScroll end
-    self:SetVerticalScroll(new)
-end)
-
 local scrollContent = CreateFrame("Frame", "IMO_ScrollContent", scrollFrame)
 scrollContent:SetSize(170, 1)
 scrollFrame:SetScrollChild(scrollContent)
 
 -------------------------------------------------------------------------------
--- RIGHT COLUMN: EDITOR INPUTS WITH SCROLL WRAPPING (Width: 280)
+-- DYNAMIC GRID RESIZER ENGINE (Handles Adaptive Hug Sizing)
 -------------------------------------------------------------------------------
-local function CreateLabelAndEditBox(labelName, yOffset, height, multiLine)
-    local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("TOPLEFT", frame, "TOPLEFT", 235, yOffset)
+layoutBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+layoutBtn:SetPoint("LEFT", searchContainer, "RIGHT", 5, 0)
+
+layoutMenu = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+layoutMenu:SetHeight(106)
+layoutMenu:SetPoint("TOPLEFT", layoutBtn, "BOTTOMLEFT", 0, -2)
+layoutMenu:SetBackdrop({
+    bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    tile = true, tileSize = 16, edgeSize = 12,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 }
+})
+layoutMenu:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+layoutMenu:SetFrameStrata("DIALOG")
+layoutMenu:Hide()
+
+local layouts = {
+    { name = "1xN (Small)", cols = 1 },
+    { name = "2xN (Med)", cols = 2 },
+    { name = "3xN (Large)", cols = 3 },
+    { name = "4xN (Alex)", cols = 4 }
+}
+
+function SetGridLayout(cols)
+    iMorphOutfitsDB.columnLayout = cols
+    layoutBtn:SetText("Size: " .. layouts[cols].name)
+    layoutMenu:Hide()
+    
+    -- Dynamic micro-scaling adjustments for top control items to avoid cramped layouts
+    if cols == 1 then
+        title:SetFontObject("GameFontNormal")
+        title:SetText("iMorph Outfits")
+        resetBtn:SetSize(82, 20)
+        resetBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -13)
+        searchContainer:SetWidth(75)
+        layoutBtn:SetSize(105, 24)
+    else
+        title:SetFontObject("GameFontNormalLarge")
+        title:SetText("iMorph Outfits")
+        resetBtn:SetSize(100, 22)
+        resetBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -38, -14)
+        searchContainer:SetWidth(120)
+        layoutBtn:SetSize(140, 24)
+    end
+    
+    -- Update dropdown window element properties dynamically
+    layoutMenu:SetWidth(layoutBtn:GetWidth())
+    for i, mBtn in ipairs(layoutMenu.buttons) do
+        mBtn:SetSize(layoutBtn:GetWidth() - 10, 22)
+        mBtn:SetPoint("TOPLEFT", 5, -5 - ((i - 1) * 24))
+    end
+    
+    local btnWidth = 150
+    local xSpacing = 6
+    local contentWidth = (cols * btnWidth) + ((cols - 1) * xSpacing)
+    
+    -- Recalculate container bounding metrics to wrap around buttons cleanly
+    local insetWidth = contentWidth + 30 
+    listInset:SetWidth(insetWidth)
+    scrollContent:SetWidth(contentWidth)
+    
+    -- Seamlessly match outer window frame margins to custom encapsulated list widths
+    local topControlsMinWidth = searchContainer:GetWidth() + 5 + layoutBtn:GetWidth() + 30
+    local finalFrameWidth = math.max(topControlsMinWidth, insetWidth + 30)
+    frame:SetWidth(finalFrameWidth)
+    
+    if RefreshMacroList then RefreshMacroList() end
+end
+
+layoutBtn:SetScript("OnClick", function()
+    if layoutMenu:IsShown() then layoutMenu:Hide() else layoutMenu:Show() end
+end)
+
+layoutMenu.buttons = {}
+for i, opt in ipairs(layouts) do
+    local mBtn = CreateFrame("Button", nil, layoutMenu, "UIPanelButtonTemplate")
+    mBtn:SetText(opt.name)
+    mBtn:SetScript("OnClick", function() SetGridLayout(opt.cols) end)
+    table.insert(layoutMenu.buttons, mBtn)
+end
+
+-------------------------------------------------------------------------------
+-- SEPARATE DIALOG PANEL: CREATOR & EDITOR MODAL
+-------------------------------------------------------------------------------
+editDialog = CreateFrame("Frame", "IMO_EditDialog", UIParent, "BackdropTemplate")
+editDialog:SetSize(310, 410)
+editDialog:SetPoint("CENTER")
+editDialog:SetMovable(true)
+editDialog:EnableMouse(true)
+editDialog:RegisterForDrag("LeftButton")
+editDialog:SetScript("OnDragStart", editDialog.StartMoving)
+editDialog:SetScript("OnDragStop", editDialog.StopMovingOrSizing)
+editDialog:SetFrameStrata("DIALOG")
+editDialog:Hide()
+
+editDialog:SetBackdrop({
+    bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    tile = true, tileSize = 16, edgeSize = 16,
+    insets = { left = 4, right = 4, top = 4, bottom = 4 }
+})
+editDialog:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
+
+local dialogTitle = editDialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+dialogTitle:SetPoint("TOPLEFT", 15, -15)
+dialogTitle:SetText("Edit Outfit")
+
+local selectedIndex = nil
+
+local function CloseEditor()
+    editDialog:Hide()
+    selectedIndex = nil
+    UnfocusAllInputBoxes()
+    if RefreshMacroList then RefreshMacroList() end
+end
+
+local dialogClose = CreateFrame("Button", nil, editDialog, "UIPanelCloseButton")
+dialogClose:SetPoint("TOPRIGHT", -5, -5)
+dialogClose:SetScript("OnClick", CloseEditor)
+
+local function CreateLabelAndEditBox(parent, labelName, yOffset, height, multiLine)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 15, yOffset)
     label:SetText(labelName)
     
-    local ebContainer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    local ebContainer = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     ebContainer:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -4)
     ebContainer:SetSize(280, height)
     ebContainer:SetBackdrop({
@@ -211,27 +314,9 @@ local function CreateLabelAndEditBox(labelName, yOffset, height, multiLine)
         eb:SetAutoFocus(false)
         eb:SetFontObject("GameFontHighlight")
         eb:SetTextInsets(2, 2, 2, 2)
-        
         sFrame:SetScrollChild(eb)
         
-        eb:SetScript("OnTextChanged", function(self)
-            sFrame:UpdateScrollChildRect()
-        end)
-        
-        eb:SetScript("OnCursorChanged", function(self, x, y, w, h)
-            sFrame:UpdateScrollChildRect()
-            local scrollRange = sFrame:GetVerticalScrollRange()
-            if scrollRange > 0 then
-                local currentScroll = sFrame:GetVerticalScroll()
-                if -y > (currentScroll + height - 24) then
-                    sFrame:SetVerticalScroll(-y - (height - 24))
-                elseif -y < currentScroll then
-                    sFrame:SetVerticalScroll(-y)
-                end
-            end
-        end)
-        
-        ebContainer:SetScript("OnMouseDown", function() eb:SetFocus() end)
+        eb:SetScript("OnTextChanged", function() sFrame:UpdateScrollChildRect() end)
     else
         eb = CreateFrame("EditBox", nil, ebContainer)
         eb:SetAllPoints(ebContainer)
@@ -240,42 +325,114 @@ local function CreateLabelAndEditBox(labelName, yOffset, height, multiLine)
         eb:SetAutoFocus(false)
         eb:SetMultiLine(false)
     end
-    
     eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     return eb
 end
 
-nameInput = CreateLabelAndEditBox("Outfit Name:", -60, 26, false)
-textInput = CreateLabelAndEditBox("Macro Body (Commands):", -115, 130, true)
-noteInput = CreateLabelAndEditBox("Note / Explanation:", -275, 90, true)
+nameInput = CreateLabelAndEditBox(editDialog, "Outfit Name:", -45, 26, false)
+textInput = CreateLabelAndEditBox(editDialog, "Macro Body (Commands):", -100, 120, true)
+noteInput = CreateLabelAndEditBox(editDialog, "Note / Explanation:", -255, 75, true)
 
--- Action Buttons (Bottom Right)
-local saveBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-saveBtn:SetSize(90, 26)
-saveBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 235, -395)
-saveBtn:SetText("Save New")
+saveBtn = CreateFrame("Button", nil, editDialog, "UIPanelButtonTemplate")
+saveBtn:SetSize(90, 24)
+saveBtn:SetPoint("BOTTOMLEFT", editDialog, "BOTTOMLEFT", 15, 15)
+saveBtn:SetText("Save")
 
-local deleteBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-deleteBtn:SetSize(90, 26)
+deleteBtn = CreateFrame("Button", nil, editDialog, "UIPanelButtonTemplate")
+deleteBtn:SetSize(90, 24)
 deleteBtn:SetPoint("LEFT", saveBtn, "RIGHT", 5, 0)
 deleteBtn:SetText("Delete")
-deleteBtn:Disable()
 
-local clearBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-clearBtn:SetSize(90, 26)
-clearBtn:SetPoint("LEFT", deleteBtn, "RIGHT", 5, 0)
-clearBtn:SetText("Clear / New")
+local dialogApplyBtn = CreateFrame("Button", nil, editDialog, "UIPanelButtonTemplate")
+dialogApplyBtn:SetSize(90, 24)
+dialogApplyBtn:SetPoint("LEFT", deleteBtn, "RIGHT", 5, 0)
+dialogApplyBtn:SetText("Apply")
+
+-- Bottom Placement Setup for New Outfit Configuration Button
+local newOutfitBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+newOutfitBtn:SetSize(100, 22)
+newOutfitBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 15, 14)
+newOutfitBtn:SetText("New Outfit")
+
+statusText:SetPoint("BOTTOMLEFT", newOutfitBtn, "BOTTOMRIGHT", 10, 4)
+
+local function OpenEditor(index)
+    selectedIndex = index
+    if index then
+        local data = iMorphOutfitsDB[index]
+        dialogTitle:SetText("Edit: " .. data.name)
+        nameInput:SetText(data.name)
+        textInput:SetText(data.body)
+        noteInput:SetText(data.note or "")
+        saveBtn:SetText("Update")
+        deleteBtn:Enable()
+        dialogApplyBtn:Enable()
+    else
+        dialogTitle:SetText("New Outfit")
+        nameInput:SetText("")
+        textInput:SetText("")
+        noteInput:SetText("")
+        saveBtn:SetText("Save New")
+        deleteBtn:Disable()
+        dialogApplyBtn:Disable()
+    end
+    editDialog:Show()
+    if RefreshMacroList then RefreshMacroList() end
+end
+
+newOutfitBtn:SetScript("OnClick", function() OpenEditor(nil) end)
+
+saveBtn:SetScript("OnClick", function()
+    local name = nameInput:GetText()
+    local body = textInput:GetText()
+    local note = noteInput:GetText()
+    
+    if name == "" or body == "" then 
+        SetStatus("Outfit missing Name or Commands!", true)
+        return 
+    end
+    
+    if selectedIndex then
+        local wasFavorite = iMorphOutfitsDB[selectedIndex].isFavorite
+        iMorphOutfitsDB[selectedIndex] = { name = name, body = body, note = note, isFavorite = wasFavorite }
+        SetStatus("Outfit updated successfully!", false)
+    else
+        table.insert(iMorphOutfitsDB, { name = name, body = body, note = note })
+        SetStatus("Outfit saved successfully!", false)
+    end
+    CloseEditor()
+end)
+
+deleteBtn:SetScript("OnClick", function()
+    if selectedIndex then
+        table.remove(iMorphOutfitsDB, selectedIndex)
+        SetStatus("Outfit layout deleted.", true)
+        CloseEditor()
+    end
+end)
+
+dialogApplyBtn:SetScript("OnClick", function()
+    local body = textInput:GetText()
+    if body ~= "" then
+        ApplyOutfit({ body = body })
+        SetStatus("Commands executed!", false)
+    end
+end)
 
 -------------------------------------------------------------------------------
--- CORE LOGIC, SEARCH ENGINE & FAVORITES SYSTEM
+-- GRID ARCHITECTURE LAYOUT COMPILER ENGINE
 -------------------------------------------------------------------------------
 local macroButtons = {}
-local selectedIndex = nil
 
 function RefreshMacroList()
-    local yOffset = 0
     local displayIndex = 1
     local filterText = string.lower(searchBox:GetText() or "")
+    local cols = iMorphOutfitsDB.columnLayout or 1
+    
+    local btnWidth = 150
+    local btnHeight = 30
+    local xSpacing = 6
+    local ySpacing = 6
 
     local favCount = 0
     local favIndices = {}
@@ -291,7 +448,7 @@ function RefreshMacroList()
             local btn = macroButtons[displayIndex]
             if not btn then
                 btn = CreateFrame("Button", "IMO_MacroBtn_"..displayIndex, scrollContent, "BackdropTemplate")
-                btn:SetSize(165, 30)
+                btn:SetSize(btnWidth, btnHeight)
                 btn:SetBackdrop({
                     bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
                     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -300,8 +457,8 @@ function RefreshMacroList()
                 })
                 
                 btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-                btn.text:SetPoint("LEFT", 10, 0)
-                btn.text:SetPoint("RIGHT", -50, 0)
+                btn.text:SetPoint("LEFT", 8, 0)
+                btn.text:SetPoint("RIGHT", -42, 0)
                 btn.text:SetJustifyH("LEFT")
                 
                 btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -310,7 +467,7 @@ function RefreshMacroList()
             
             if not btn.starBtn then
                 btn.starBtn = CreateFrame("Button", nil, btn)
-                btn.starBtn:SetSize(14, 14)
+                btn.starBtn:SetSize(12, 12)
                 btn.starBtn:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
                 
                 btn.starTex = btn.starBtn:CreateTexture(nil, "ARTWORK")
@@ -321,27 +478,19 @@ function RefreshMacroList()
                 btn.favText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 btn.favText:SetPoint("RIGHT", btn.starBtn, "LEFT", -2, 0)
                 btn.favText:SetTextColor(1, 0.82, 0)
-                
-                btn.starBtn:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText("Favorite Status", 1, 1, 1)
-                    GameTooltip:AddLine("Click to toggle favoriting this configuration.", 0.7, 0.7, 0.7)
-                    GameTooltip:Show()
-                end)
-                btn.starBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             end
             
             btn.starBtn:SetScript("OnClick", function()
                 iMorphOutfitsDB[i].isFavorite = not iMorphOutfitsDB[i].isFavorite
-                if iMorphOutfitsDB[i].isFavorite then
-                    SetStatus(data.name .. " added to favorites!", false)
-                else
-                    SetStatus(data.name .. " removed from favorites.", true)
-                end
                 RefreshMacroList()
             end)
             
-            btn:SetPoint("TOPLEFT", 0, yOffset)
+            local row = math.floor((displayIndex - 1) / cols)
+            local col = (displayIndex - 1) % cols
+            local xPos = col * (btnWidth + xSpacing)
+            local yPos = -row * (btnHeight + ySpacing)
+            
+            btn:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", xPos, yPos)
             btn.text:SetText(data.name)
             
             if data.isFavorite then
@@ -349,12 +498,12 @@ function RefreshMacroList()
                 btn.favText:SetText("#" .. (favIndices[i] or ""))
                 btn.favText:Show()
             else
-                btn.starTex:SetVertexColor(0.25, 0.25, 0.25, 0.35)
+                btn.starTex:SetVertexColor(0.25, 0.25, 0.25, 0.3)
                 btn.favText:SetText("")
                 btn.favText:Hide()
             end
             
-            if selectedIndex == i then
+            if selectedIndex == i and editDialog:IsShown() then
                 btn:SetBackdropColor(0.1, 0.4, 0.1, 0.8)
                 btn:SetBackdropBorderColor(0, 1, 0, 1)
             else
@@ -365,14 +514,9 @@ function RefreshMacroList()
             btn:SetScript("OnClick", function(self, button)
                 if button == "LeftButton" then
                     ApplyOutfit(data)
+                    SetStatus("Applied: " .. data.name, false)
                 elseif button == "RightButton" then
-                    selectedIndex = i
-                    nameInput:SetText(data.name)
-                    textInput:SetText(data.body)
-                    noteInput:SetText(data.note or "")
-                    saveBtn:SetText("Update")
-                    deleteBtn:Enable()
-                    RefreshMacroList()
+                    OpenEditor(i)
                 end
             end)
             
@@ -384,13 +528,12 @@ function RefreshMacroList()
                 else
                     GameTooltip:AddLine("\n|cff888888No descriptions added.|r")
                 end
-                GameTooltip:AddLine("\n|cffffaa00[Left-Click]|r Apply Outfit\n|cffffaa00[Right-Click]|r Edit Settings", 0.7, 0.7, 0.7)
+                GameTooltip:AddLine("\n|cffffaa00[Left-Click]|r Apply Outfit\n|cffffaa00[Right-Click]|r Open Editor Dialog", 0.7, 0.7, 0.7)
                 GameTooltip:Show()
             end)
+            btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             
-            btn:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
             btn:Show()
-            yOffset = yOffset - 34
             displayIndex = displayIndex + 1
         end
     end
@@ -399,65 +542,19 @@ function RefreshMacroList()
         if macroButtons[i] then macroButtons[i]:Hide() end
     end
     
-    scrollContent:SetHeight(math.abs(yOffset))
+    local totalRows = math.ceil((displayIndex - 1) / cols)
+    scrollContent:SetHeight(math.max(1, totalRows * (btnHeight + ySpacing)))
 end
 
 local function ToggleMainFrame()
     if frame:IsShown() then
         frame:Hide()
+        CloseEditor()
     else
         frame:Show()
-        RefreshMacroList()
+        SetGridLayout(iMorphOutfitsDB.columnLayout or 1)
     end
 end
-
-local function ClearEditor()
-    nameInput:SetText("")
-    textInput:SetText("")
-    noteInput:SetText("")
-    selectedIndex = nil
-    saveBtn:SetText("Save New")
-    deleteBtn:Disable()
-    RefreshMacroList()
-end
-
-saveBtn:SetScript("OnClick", function()
-    local name = nameInput:GetText()
-    local body = textInput:GetText()
-    local note = noteInput:GetText()
-    
-    if name == "" or body == "" then 
-        SetStatus("Outfit wasn't saved. Name and Commands required!", true)
-        UnfocusAllInputBoxes()
-        return 
-    end
-    
-    if selectedIndex then
-        local wasFavorite = iMorphOutfitsDB[selectedIndex].isFavorite
-        iMorphOutfitsDB[selectedIndex] = { name = name, body = body, note = note, isFavorite = wasFavorite }
-        SetStatus("Outfit updated successfully!", false)
-        RefreshMacroList()
-    else
-        table.insert(iMorphOutfitsDB, { name = name, body = body, note = note })
-        SetStatus("Outfit saved successfully!", false)
-        ClearEditor()
-    end
-    UnfocusAllInputBoxes()
-end)
-
-deleteBtn:SetScript("OnClick", function()
-    if selectedIndex then
-        table.remove(iMorphOutfitsDB, selectedIndex)
-        SetStatus("Outfit layout deleted.", true)
-        ClearEditor()
-        UnfocusAllInputBoxes()
-    end
-end)
-
-clearBtn:SetScript("OnClick", function()
-    ClearEditor()
-    UnfocusAllInputBoxes()
-end)
 
 -------------------------------------------------------------------------------
 -- MINIMAP BUTTON FRAME GENERATION
@@ -512,7 +609,7 @@ miniButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:SetText("iMorph Outfits", 1, 1, 1)
     GameTooltip:AddLine("by Revinder", 0.7, 0.7, 0.7)
-    GameTooltip:AddLine("\n|cffffaa00[Left-Click]|r Toggle Wardrobe Frame\n|cffffaa00[Drag Button]|r Reposition Around Minimap", 1, 1, 1, true)
+    GameTooltip:AddLine("\n|cffffaa00[Left-Click]|r Toggle Wardrobe Grid\n|cffffaa00[Drag Button]|r Reposition Around Minimap", 1, 1, 1, true)
     GameTooltip:Show()
 end)
 miniButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -525,8 +622,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and string.lower(arg1) == string.lower(addonName) then
         iMorphOutfitsDB = iMorphOutfitsDB or {}
         if not iMorphOutfitsDB.minimapPos then iMorphOutfitsDB.minimapPos = 45 end
+        if not iMorphOutfitsDB.columnLayout then iMorphOutfitsDB.columnLayout = 1 end
         RepositionMinimapButton()
-        RefreshMacroList()
+        SetGridLayout(iMorphOutfitsDB.columnLayout)
     end
 end)
 
@@ -534,16 +632,10 @@ SLASH_IMORPHOUTFITS1 = "/imo"
 SLASH_IMORPHOUTFITS2 = "/rev"
 
 SlashCmdList["IMORPHOUTFITS"] = function(msg)
-    -- Normalize and sanitize text input string mapping parameters safely
     msg = string.lower(string.gsub(msg, "^%s*(.-)%s*$", "%1"))
-    
-    if msg == "" then
-        ToggleMainFrame()
-        return
-    end
+    if msg == "" then ToggleMainFrame() return end
     
     local cmd, arg = string.match(msg, "^(%S*)%s*(.-)$")
-    
     if cmd == "help" then
         DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00iMorph Outfits Commands Help Menu:|r")
         DEFAULT_CHAT_FRAME:AddMessage("  |cff00ff00/rev|r - Toggle main wardrobe visual frame UI layout")
@@ -553,67 +645,46 @@ SlashCmdList["IMORPHOUTFITS"] = function(msg)
         DEFAULT_CHAT_FRAME:AddMessage("  |cff00ff00/rev favourite random|r - Picks one profile strictly isolated within favored definitions")
         DEFAULT_CHAT_FRAME:AddMessage("  |cff00ff00/rev favourite <number>|r - Fires the exact specified favorite profile assignment path")
         return
-        
     elseif cmd == "random" then
-        if #iMorphOutfitsDB == 0 then
-            DEFAULT_CHAT_FRAME:AddMessage("|cffff3333iMorph Outfits Error: You do not have any configurations stored yet!|r")
-            return
-        end
-        local randomIndex = math.random(1, #iMorphOutfitsDB)
-        local data = iMorphOutfitsDB[randomIndex]
-        DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00iMorph Outfits:|r Random selection chosen: |cffffaa00" .. data.name .. "|r")
-        ApplyOutfit(data)
+        if #iMorphOutfitsDB == 0 then return end
+        local rIdx = math.random(1, #iMorphOutfitsDB)
+        DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00iMorph Outfits:|r Random: |cffffaa00" .. iMorphOutfitsDB[rIdx].name .. "|r")
+        ApplyOutfit(iMorphOutfitsDB[rIdx])
         return
-        
     elseif cmd == "favourite" or cmd == "favorite" then
         if arg == "list" then
             DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00iMorph Outfits - Active Favorites Catalog:|r")
             local listCount = 0
-            for _, data in ipairs(iMorphOutfitsDB) do
-                if data.isFavorite then
+            for _, d in ipairs(iMorphOutfitsDB) do
+                if d.isFavorite then
                     listCount = listCount + 1
-                    DEFAULT_CHAT_FRAME:AddMessage("  |cff00ff00#" .. listCount .. "|r: " .. data.name)
+                    DEFAULT_CHAT_FRAME:AddMessage("  |cff00ff00#" .. listCount .. "|r: " .. d.name)
                 end
             end
-            if listCount == 0 then
-                DEFAULT_CHAT_FRAME:AddMessage("  |cff888888No profiles have been designated favorite bookmarks yet.|r")
-            end
             return
-            
         elseif arg == "random" then
-            local favEntries = {}
-            for _, data in ipairs(iMorphOutfitsDB) do
-                if data.isFavorite then
-                    table.insert(favEntries, data)
-                end
-            end
-            if #favEntries == 0 then
-                DEFAULT_CHAT_FRAME:AddMessage("|cffff3333iMorph Outfits Error: You do not have any profiles favorited yet!|r")
-                return
-            end
-            local randomFavIndex = math.random(1, #favEntries)
-            local data = favEntries[randomFavIndex]
-            DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00iMorph Outfits:|r Random favorite chosen: |cffffaa00" .. data.name .. "|r")
-            ApplyOutfit(data)
+            local favs = {}
+            for _, d in ipairs(iMorphOutfitsDB) do if d.isFavorite then table.insert(favs, d) end end
+            if #favs == 0 then return end
+            local rIdx = math.random(1, #favs)
+            DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00iMorph Outfits:|r Random Favorite: |cffffaa00" .. favs[rIdx].name .. "|r")
+            ApplyOutfit(favs[rIdx])
             return
-            
         else
-            local conversionNumber = tonumber(arg)
-            if conversionNumber then
-                local calculationCounter = 0
-                for _, data in ipairs(iMorphOutfitsDB) do
-                    if data.isFavorite then
-                        calculationCounter = calculationCounter + 1
-                        if calculationCounter == conversionNumber then
-                            DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00iMorph Outfits:|r Executing favorite #" .. conversionNumber .. ": |cffffaa00" .. data.name .. "|r")
-                            ApplyOutfit(data)
+            local num = tonumber(arg)
+            if num then
+                local count = 0
+                for _, d in ipairs(iMorphOutfitsDB) do
+                    if d.isFavorite then
+                        count = count + 1
+                        if count == num then
+                            DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00iMorph Outfits:|r Favorite #" .. num .. ": |cffffaa00" .. d.name .. "|r")
+                            ApplyOutfit(d)
                             return
                         end
                     end
                 end
-                DEFAULT_CHAT_FRAME:AddMessage("|cffff3333iMorph Outfits Error: Favorite layout #" .. conversionNumber .. " does not exist!|r")
-            else
-                DEFAULT_CHAT_FRAME:AddMessage("|cffff3333iMorph Outfits Error: Invalid structural command parameter. Type /rev help.|r")
+                DEFAULT_CHAT_FRAME:AddMessage("|cffff3333iMorph Outfits Error: Favorite #" .. num .. " not found!|r")
             end
             return
         end
