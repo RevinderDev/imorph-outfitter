@@ -172,7 +172,7 @@ searchBox:SetScript("OnEscapePressed", function(self)
 end)
 
 -------------------------------------------------------------------------------
--- OUTFIT LIST GRID PANEL (Right anchor removed to let SetWidth dictate size)
+-- OUTFIT LIST GRID PANEL
 -------------------------------------------------------------------------------
 local listInset = CreateFrame("Frame", nil, frame, "BackdropTemplate")
 listInset:SetPoint("TOPLEFT", 15, -82)
@@ -196,7 +196,7 @@ scrollContent:SetSize(170, 1)
 scrollFrame:SetScrollChild(scrollContent)
 
 -------------------------------------------------------------------------------
--- DYNAMIC GRID RESIZER ENGINE (Handles Adaptive Hug Sizing)
+-- DYNAMIC GRID RESIZER ENGINE
 -------------------------------------------------------------------------------
 layoutBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 layoutBtn:SetPoint("LEFT", searchContainer, "RIGHT", 5, 0)
@@ -228,7 +228,6 @@ function SetGridLayout(cols)
 	layoutBtn:SetText("Size: " .. layouts[cols].name)
 	layoutMenu:Hide()
 
-	-- Dynamic micro-scaling adjustments for top control items to avoid cramped layouts
 	if cols == 1 then
 		title:SetFontObject("GameFontNormal")
 		title:SetText("iMorph Outfits")
@@ -245,7 +244,6 @@ function SetGridLayout(cols)
 		layoutBtn:SetSize(140, 24)
 	end
 
-	-- Update dropdown window element properties dynamically
 	layoutMenu:SetWidth(layoutBtn:GetWidth())
 	for i, mBtn in ipairs(layoutMenu.buttons) do
 		mBtn:SetSize(layoutBtn:GetWidth() - 10, 22)
@@ -256,13 +254,10 @@ function SetGridLayout(cols)
 	local xSpacing = 6
 	local contentWidth = (cols * btnWidth) + ((cols - 1) * xSpacing)
 
-	-- Recalculate container bounding metrics to wrap around buttons cleanly
 	local insetWidth = contentWidth + 30
 	listInset:SetWidth(insetWidth)
 	scrollContent:SetWidth(contentWidth)
 
-	-- Seamlessly match outer window frame margins to custom encapsulated list widths
-	-- Set to minimum 315px floor metric to natively block button overlap patterns on low column sizes
 	local topControlsMinWidth = math.max(searchContainer:GetWidth() + 5 + layoutBtn:GetWidth() + 30, 315)
 	local finalFrameWidth = math.max(topControlsMinWidth, insetWidth + 30)
 	frame:SetWidth(finalFrameWidth)
@@ -368,6 +363,12 @@ local function CreateLabelAndEditBox(parent, labelName, yOffset, height, multiLi
 		eb:SetScript("OnTextChanged", function()
 			sFrame:UpdateScrollChildRect()
 		end)
+
+		-- FIX: Clicking empty space within the ScrollFrame focuses the EditBox
+		sFrame:EnableMouse(true)
+		sFrame:SetScript("OnMouseDown", function()
+			eb:SetFocus()
+		end)
 	else
 		eb = CreateFrame("EditBox", nil, ebContainer)
 		eb:SetAllPoints(ebContainer)
@@ -376,6 +377,13 @@ local function CreateLabelAndEditBox(parent, labelName, yOffset, height, multiLi
 		eb:SetAutoFocus(false)
 		eb:SetMultiLine(false)
 	end
+
+	-- FIX: Clicking the outer border container background also focuses the EditBox
+	ebContainer:EnableMouse(true)
+	ebContainer:SetScript("OnMouseDown", function()
+		eb:SetFocus()
+	end)
+
 	eb:SetScript("OnEscapePressed", function(self)
 		self:ClearFocus()
 	end)
@@ -425,7 +433,7 @@ deleteAllBtn:SetText("Delete All")
 statusText:SetPoint("BOTTOMLEFT", deleteAllBtn, "BOTTOMRIGHT", 10, 4)
 
 -------------------------------------------------------------------------------
--- DELETE ALL FUNCTIONALITY CONFIGURATION (SELF-CONFIRMING STATE TIMER)
+-- DELETE ALL FUNCTIONALITY CONFIGURATION
 -------------------------------------------------------------------------------
 local isDeleteAllConfirming = false
 local deleteAllTimer
@@ -445,7 +453,6 @@ deleteAllBtn:SetScript("OnClick", function(self)
 		isDeleteAllConfirming = false
 		self:SetText("Delete All")
 
-		-- Wipe layout entries cleanly but retain dynamic settings variables
 		local currentLayout = iMorphOutfitsDB.columnLayout
 		local currentPos = iMorphOutfitsDB.minimapPos
 		iMorphOutfitsDB = { columnLayout = currentLayout, minimapPos = currentPos }
@@ -461,7 +468,7 @@ deleteAllBtn:SetScript("OnClick", function(self)
 end)
 
 -------------------------------------------------------------------------------
--- IMPORT / EXPORT STRING SERIALIZATION ENGINE (WITH AUTO-CONFLICT INCREMENTER)
+-- IMPORT / EXPORT STRING SERIALIZATION ENGINE
 -------------------------------------------------------------------------------
 local function EncodeOutfits()
 	local pieces = {}
@@ -505,7 +512,6 @@ local function DecodeOutfits(str)
 			local body = hexDecode(bodyHex)
 			local note = hexDecode(noteHex)
 			if name ~= "" and body ~= "" then
-				-- Smart Conflict Architecture: Append sequential bracket suffix if name is already present
 				if NameExists(name) then
 					local suffixNum = 1
 					local baseName = name
@@ -589,6 +595,12 @@ ioEditBox:SetScript("OnTextChanged", function()
 end)
 ioEditBox:SetScript("OnEscapePressed", function(self)
 	self:ClearFocus()
+end)
+
+-- FIX: Ensure import/export ScrollFrame also redirects blank-space clicks to its EditBox
+ioScroll:EnableMouse(true)
+ioScroll:SetScript("OnMouseDown", function()
+	ioEditBox:SetFocus()
 end)
 
 local ioActionBtn = CreateFrame("Button", nil, ioDialog, "UIPanelButtonTemplate")
@@ -731,12 +743,10 @@ function RefreshMacroList()
 	local xSpacing = 6
 	local ySpacing = 6
 
-	-- Create a temporary display list to force favorites to the top
 	local displayList = {}
 	local favCount = 0
 	local favIndices = {}
 
-	-- Pass 1: Collect filtered favorites
 	for i, data in ipairs(iMorphOutfitsDB) do
 		if filterText == "" or string.find(string.lower(data.name or ""), filterText, 1, true) then
 			if data.isFavorite then
@@ -747,7 +757,6 @@ function RefreshMacroList()
 		end
 	end
 
-	-- Pass 2: Collect filtered non-favorites
 	for i, data in ipairs(iMorphOutfitsDB) do
 		if filterText == "" or string.find(string.lower(data.name or ""), filterText, 1, true) then
 			if not data.isFavorite then
@@ -756,7 +765,6 @@ function RefreshMacroList()
 		end
 	end
 
-	-- Render the UI elements based on our re-ordered displayList
 	for _, item in ipairs(displayList) do
 		local i = item.dbIndex
 		local data = item.data
@@ -832,7 +840,6 @@ function RefreshMacroList()
 		btn:SetScript("OnClick", function(self, button)
 			if button == "LeftButton" then
 				if IsControlKeyDown() then
-					-- Ctrl + Left Click Route: Clear outfit instantly without any confirmation modal
 					table.remove(iMorphOutfitsDB, i)
 					SetStatus("Deleted: " .. data.name, true)
 					if editDialog and selectedIndex == i then
