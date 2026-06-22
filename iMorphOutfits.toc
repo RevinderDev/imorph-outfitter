@@ -1,7 +1,13 @@
-﻿## Interface: 20504
+## Interface: 20504
 ## Title: iMorph Outfits
 ## Notes: Save custom item and morph sets with private guide notes.
 ## SavedVariables: iMorphOutfitsDB
-## Version: 1.1
+## Version: 1.2
 
 iMorphOutfits.lua
+API.lua
+MainFrame.lua
+EditDialog.lua
+IODialog.lua
+MinimapButton.lua
+Slash.lua
