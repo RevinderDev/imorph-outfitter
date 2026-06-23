@@ -2,7 +2,7 @@
 ## Title: iMorph Outfits
 ## Notes: Save custom item and morph sets with private guide notes.
 ## SavedVariables: iMorphOutfitsDB
-## Version: 1.2
+## Version: 0.0.2
 
 iMorphOutfits.lua
 API.lua
